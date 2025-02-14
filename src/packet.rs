@@ -7,7 +7,6 @@ use crate::{
 pub struct Announcement {
   pub id: uuid::Uuid,
   pub device: Device,
-  pub port: u16,
 }
 
 const NEBULA: &[u8] = b"nebula";
@@ -19,8 +18,7 @@ impl Serialize for Announcement {
   ) -> std::io::Result<()> {
     wr.write_all(NEBULA).await?;
     self.id.serialize(wr).await?;
-    self.device.serialize(wr).await?;
-    wr.write_u16(self.port).await
+    self.device.serialize(wr).await
   }
 }
 
@@ -39,10 +37,10 @@ impl Serialize for Device {
     wr: &mut W,
   ) -> std::io::Result<()> {
     match self {
-      Device::Macos => wr.write_u8(1).await,
-      Device::Windows => wr.write_u8(2).await,
-      Device::Linux => wr.write_u8(3).await,
-      Device::Unknown => wr.write_u8(4).await,
+      Device::Macos => wr.write_u8(Device::TAG_MACOS).await,
+      Device::Windows => wr.write_u8(Device::TAG_WINDOWS).await,
+      Device::Linux => wr.write_u8(Device::TAG_LINUX).await,
+      Device::Unknown => wr.write_u8(Device::TAG_UNKNOWN).await,
     }
   }
 }
@@ -60,9 +58,8 @@ impl Deserialize for Announcement {
 
     let id = uuid::Uuid::deserialize(rd).await?;
     let device = Device::deserialize(rd).await?;
-    let port = rd.read_u16().await?;
 
-    Ok(Self { id, device, port })
+    Ok(Self { id, device })
   }
 }
 
@@ -76,13 +73,16 @@ impl Deserialize for uuid::Uuid {
 
 impl Deserialize for Device {
   async fn deserialize<R: tokio::io::AsyncReadExt + Unpin>(rd: &mut R) -> std::io::Result<Self> {
+    use std::io::{Error, ErrorKind};
+
     let tag = rd.read_u8().await?;
 
     let device = match tag {
-      1 => Device::Macos,
-      2 => Device::Windows,
-      3 => Device::Linux,
-      _ => todo!(),
+      Device::TAG_MACOS => Device::Macos,
+      Device::TAG_WINDOWS => Device::Windows,
+      Device::TAG_LINUX => Device::Linux,
+      Device::TAG_UNKNOWN => Device::Unknown,
+      _ => Err(Error::new(ErrorKind::InvalidData, "invalid device tag"))?,
     };
 
     Ok(device)
