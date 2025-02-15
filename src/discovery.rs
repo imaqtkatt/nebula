@@ -11,11 +11,14 @@ use crate::{
 
 pub type Peers = Arc<RwLock<HashMap<uuid::Uuid, Peer>>>;
 
+const PEER_TIMEOUT_SECS: u64 = 40;
+
 pub struct Discovery {
   socket: Arc<UdpSocket>,
   peers: Peers,
   announce: Option<tokio::task::JoinHandle<()>>,
   discover: Option<tokio::task::JoinHandle<()>>,
+  remove: Option<tokio::task::JoinHandle<()>>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -44,6 +47,7 @@ impl Discovery {
       peers: Arc::new(RwLock::new(HashMap::new())),
       announce: None,
       discover: None,
+      remove: None,
     }
   }
 }
@@ -51,17 +55,10 @@ impl Discovery {
 impl Discovery {
   pub async fn start(&mut self, announcement: packet::Announcement) -> std::io::Result<()> {
     self.announce = Some(self.announce(announcement).await?);
-
     self.discover = Some(self.discover());
+    self.remove = Some(self.remove());
 
     Ok(())
-  }
-
-  pub async fn block(self) -> Result<(), tokio::task::JoinError> {
-    match (self.announce, self.discover) {
-      (Some(an), Some(di)) => an.await.and(di.await),
-      _ => panic!("invalid discovery state"),
-    }
   }
 
   async fn announce(
@@ -133,6 +130,27 @@ impl Discovery {
       std::collections::hash_map::Entry::Vacant(vacant_entry) => {
         vacant_entry.insert(Peer::new(announcement.id, announcement.device, addr));
       }
+    }
+  }
+
+  fn remove(&self) -> tokio::task::JoinHandle<()> {
+    let peers = Arc::clone(&self.peers);
+
+    tokio::spawn(async move {
+      loop {
+        tokio::time::sleep(Duration::from_secs(25)).await;
+
+        let mut peers_write = peers.write().await;
+        peers_write
+          .retain(|_, peer| peer.last_seen.elapsed() < Duration::from_secs(PEER_TIMEOUT_SECS));
+      }
+    })
+  }
+
+  pub async fn block(self) -> Result<(), tokio::task::JoinError> {
+    match (self.announce, self.discover) {
+      (Some(an), Some(di)) => an.await.and(di.await),
+      _ => panic!("invalid discovery state"),
     }
   }
 }
