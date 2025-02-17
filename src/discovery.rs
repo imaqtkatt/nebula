@@ -41,10 +41,10 @@ impl Peer {
 }
 
 impl Discovery {
-  pub fn new(socket: Arc<UdpSocket>) -> Self {
+  pub fn new(socket: Arc<UdpSocket>, peers: Peers) -> Self {
     Self {
       socket,
-      peers: Arc::new(RwLock::new(HashMap::new())),
+      peers,
       announce: None,
       discover: None,
       remove: None,
@@ -122,6 +122,7 @@ impl Discovery {
 
     println!("upserting peer, announcement = {announcement:?}, addr = {addr}");
 
+    // TODO: emit event?
     match peers.entry(announcement.id) {
       std::collections::hash_map::Entry::Occupied(mut occupied_entry) => {
         let peer = occupied_entry.get_mut();
@@ -141,15 +142,21 @@ impl Discovery {
         tokio::time::sleep(Duration::from_secs(25)).await;
 
         let mut peers_write = peers.write().await;
-        peers_write
-          .retain(|_, peer| peer.last_seen.elapsed() < Duration::from_secs(PEER_TIMEOUT_SECS));
+        peers_write.retain(|_, peer| {
+          if peer.last_seen.elapsed() > Duration::from_secs(PEER_TIMEOUT_SECS) {
+            // TODO: emit event?
+            false
+          } else {
+            true
+          }
+        });
       }
     })
   }
 
   pub async fn block(self) -> Result<(), tokio::task::JoinError> {
-    match (self.announce, self.discover) {
-      (Some(an), Some(di)) => an.await.and(di.await),
+    match (self.announce, self.discover, self.remove) {
+      (Some(an), Some(di), Some(re)) => an.await.and(di.await).and(re.await),
       _ => panic!("invalid discovery state"),
     }
   }

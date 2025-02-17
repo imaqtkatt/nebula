@@ -1,12 +1,18 @@
 use std::{
+  collections::HashMap,
   net::{Ipv4Addr, SocketAddr},
   sync::Arc,
 };
 
-use tokio::net::{TcpListener, UdpSocket};
+use file_transfer::FileTransfer;
+use tokio::{
+  net::{TcpListener, UdpSocket},
+  sync::RwLock,
+};
 
 mod device;
 mod discovery;
+mod file_transfer;
 mod packet;
 mod serde;
 
@@ -19,12 +25,14 @@ const MULTICAST_ADDR: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(MULTI_AD
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
+  let peers = Arc::new(RwLock::new(HashMap::new()));
+
   let socket = UdpSocket::bind((INTERFACE_ADDR, PORT)).await?;
   let socket = Arc::new(socket);
   socket.join_multicast_v4(MULTI_ADDR, INTERFACE_ADDR)?;
   socket.set_multicast_loop_v4(false)?;
 
-  let _listener = TcpListener::bind((INTERFACE_ADDR, PORT)).await?;
+  let listener = TcpListener::bind((INTERFACE_ADDR, PORT)).await?;
 
   let node_id = uuid::Uuid::new_v4();
 
@@ -33,7 +41,9 @@ async fn main() -> std::io::Result<()> {
     device: device::DEVICE,
   };
 
-  let mut discovery = discovery::Discovery::new(socket);
+  let (_ft, ft_evt_emitter) = FileTransfer::init(Arc::clone(&peers), listener);
+
+  let mut discovery = discovery::Discovery::new(socket, Arc::clone(&peers));
   discovery.start(announcement).await?;
 
   if let Err(e) = discovery.block().await {
