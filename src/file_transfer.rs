@@ -15,8 +15,8 @@ pub struct TransferData {
 
 pub struct FileTransfer {
   peers: Peers,
-  sender: Option<tokio::task::JoinHandle<()>>,
-  receiver: Option<tokio::task::JoinHandle<()>>,
+  sender: tokio::task::JoinHandle<()>,
+  receiver: tokio::task::JoinHandle<()>,
 }
 
 impl FileTransfer {
@@ -28,8 +28,8 @@ impl FileTransfer {
 
     let this = Self {
       peers,
-      sender: Some(sender(rx)),
-      receiver: Some(receiver(listener)),
+      sender: sender(rx),
+      receiver: receiver(listener),
     };
 
     (this, tx)
@@ -50,9 +50,11 @@ fn sender(
           }
         };
 
-        if let Err(e) = stream.write_all(&evt.data).await {
-          eprintln!("Error while sending file data: {e}");
-        }
+        tokio::spawn(async move {
+          if let Err(e) = stream.write_all(&evt.data).await {
+            eprintln!("Error while sending file data: {e}");
+          }
+        });
       }
     }
   })

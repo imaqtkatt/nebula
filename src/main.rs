@@ -4,12 +4,15 @@ use std::{
   sync::Arc,
 };
 
+use discovery::Peers;
 use file_transfer::FileTransfer;
+use futures::{SinkExt, StreamExt};
 use tokio::{
   net::{TcpListener, UdpSocket},
   sync::RwLock,
 };
 
+mod api;
 mod device;
 mod discovery;
 mod file_transfer;
@@ -41,14 +44,52 @@ async fn main() -> std::io::Result<()> {
     device: device::DEVICE,
   };
 
-  let (_ft, ft_evt_emitter) = FileTransfer::init(Arc::clone(&peers), listener);
+  let discovery = discovery::Discovery::init(socket, announcement, Arc::clone(&peers)).await?;
 
-  let mut discovery = discovery::Discovery::new(socket, Arc::clone(&peers));
-  discovery.start(announcement).await?;
+  let (_ft, ft_evt_emitter) = FileTransfer::init(Arc::clone(&peers), listener);
 
   if let Err(e) = discovery.block().await {
     eprintln!("Error: {e}");
   }
 
-  Ok(())
+  let http_listener = TcpListener::bind("127.0.0.1:35436").await?;
+  let app = axum::Router::new()
+    .route("/ws", axum::routing::any(ws_handler))
+    .with_state(api::AppState::new(&peers, ft_evt_emitter));
+
+  axum::serve(http_listener, app).await
+}
+
+async fn ws_handler(
+  ws: axum::extract::ws::WebSocketUpgrade,
+  state: axum::extract::State<api::AppState>,
+  axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<SocketAddr>,
+) -> impl axum::response::IntoResponse {
+  ws.on_upgrade(move |socket| handle_ws(socket, addr, state))
+}
+
+async fn handle_ws(
+  socket: axum::extract::ws::WebSocket,
+  who: SocketAddr,
+  state: axum::extract::State<api::AppState>,
+) {
+  let (mut sender, mut receiver) = socket.split();
+
+  let send_task = tokio::spawn(async move { loop {} });
+
+  let recv_task = tokio::spawn(async move {
+    loop {
+      let x = match receiver.next().await {
+        Some(value) => value,
+        None => continue,
+      };
+
+      match x {
+        Ok(msg) => {
+          todo!()
+        }
+        Err(e) => eprintln!("{e}"),
+      }
+    }
+  });
 }
