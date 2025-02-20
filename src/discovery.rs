@@ -7,7 +7,7 @@ use crate::{
   event::{self, NebulaEvent},
   packet,
   serde::{Deserialize, Serialize},
-  MULTICAST_ADDR,
+  MULTICAST_ADDR_V4, MULTICAST_ADDR_V6, USE_IPV6,
 };
 
 pub struct Discovery {
@@ -75,9 +75,15 @@ async fn announce(
   let mut buf = vec![];
   announcement.serialize(&mut buf).await?;
 
+  let multi_addr = if USE_IPV6 {
+    MULTICAST_ADDR_V6
+  } else {
+    MULTICAST_ADDR_V4
+  };
+
   let handle = tokio::spawn(async move {
     loop {
-      if let Err(e) = socket.send_to(&buf, MULTICAST_ADDR).await {
+      if let Err(e) = socket.send_to(&buf, multi_addr).await {
         eprintln!("Error while sending announcement: {e}");
       }
 

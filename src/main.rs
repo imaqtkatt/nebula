@@ -1,6 +1,6 @@
 use std::{
   collections::HashMap,
-  net::{Ipv4Addr, SocketAddr},
+  net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
   sync::Arc,
 };
 
@@ -22,21 +22,44 @@ mod serde;
 
 const PORT: u16 = 35435;
 
-const INTERFACE_ADDR: Ipv4Addr = Ipv4Addr::new(0, 0, 0, 0);
+const INTERFACE_ADDR_V4: Ipv4Addr = Ipv4Addr::UNSPECIFIED;
+const INTERFACE_ADDR_V6: Ipv6Addr = Ipv6Addr::UNSPECIFIED;
 
-const MULTI_ADDR: Ipv4Addr = Ipv4Addr::new(239, 255, 0, 1);
-const MULTICAST_ADDR: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(MULTI_ADDR), PORT);
+const MULTI_ADDR_V4: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 1);
+const MULTICAST_ADDR_V4: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(MULTI_ADDR_V4), PORT);
+
+const MULTI_ADDR_V6: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 123);
+const MULTICAST_ADDR_V6: SocketAddr = SocketAddr::new(std::net::IpAddr::V6(MULTI_ADDR_V6), PORT);
+
+const USE_IPV6: bool = false;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
   let peers = Arc::new(RwLock::new(HashMap::new()));
 
-  let socket = UdpSocket::bind((INTERFACE_ADDR, PORT)).await?;
-  let socket = Arc::new(socket);
-  socket.join_multicast_v4(MULTI_ADDR, INTERFACE_ADDR)?;
-  socket.set_multicast_loop_v4(false)?;
+  let socket = if USE_IPV6 {
+    let local_addr = SocketAddrV6::new(INTERFACE_ADDR_V6, PORT, 0, 0);
+    UdpSocket::bind(local_addr).await?
+  } else {
+    let local_addr = SocketAddrV4::new(INTERFACE_ADDR_V4, PORT);
+    UdpSocket::bind(local_addr).await?
+  };
 
-  let listener = TcpListener::bind((INTERFACE_ADDR, PORT)).await?;
+  let socket = Arc::new(socket);
+
+  if USE_IPV6 {
+    socket.join_multicast_v6(&MULTI_ADDR_V6, 0)?;
+    socket.set_multicast_loop_v6(false)?;
+  } else {
+    socket.join_multicast_v4(MULTI_ADDR_V4, INTERFACE_ADDR_V4)?;
+    socket.set_multicast_loop_v4(false)?;
+  }
+
+  let listener = if USE_IPV6 {
+    TcpListener::bind((INTERFACE_ADDR_V6, PORT)).await?
+  } else {
+    TcpListener::bind((INTERFACE_ADDR_V4, PORT)).await?
+  };
 
   let node_id = uuid::Uuid::new_v4();
 
