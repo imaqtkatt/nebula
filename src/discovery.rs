@@ -4,6 +4,7 @@ use tokio::{net::UdpSocket, sync::RwLock};
 
 use crate::{
   device::Device,
+  event::{self, NebulaEvent},
   packet,
   serde::{Deserialize, Serialize},
   MULTICAST_ADDR,
@@ -42,12 +43,17 @@ impl Discovery {
   pub async fn init(
     socket: Arc<UdpSocket>,
     announcement: packet::Announcement,
+    event_sender: &event::EventSender,
     peers: Peers,
   ) -> std::io::Result<Self> {
     Ok(Self {
       announce: announce(Arc::clone(&socket), announcement).await?,
-      discover: discover(Arc::clone(&socket), Arc::clone(&peers)),
-      remove: remove(Arc::clone(&peers)),
+      discover: discover(
+        Arc::clone(&socket),
+        event_sender.clone(),
+        Arc::clone(&peers),
+      ),
+      remove: remove(Arc::clone(&peers), event_sender.clone()),
     })
   }
 }
@@ -82,7 +88,11 @@ async fn announce(
   Ok(handle)
 }
 
-fn discover(socket: Arc<UdpSocket>, peers: Peers) -> tokio::task::JoinHandle<()> {
+fn discover(
+  socket: Arc<UdpSocket>,
+  event_sender: event::EventSender,
+  peers: Peers,
+) -> tokio::task::JoinHandle<()> {
   let mut buf = [0u8; 32];
 
   tokio::spawn(async move {
@@ -104,29 +114,41 @@ fn discover(socket: Arc<UdpSocket>, peers: Peers) -> tokio::task::JoinHandle<()>
         }
       };
 
-      upsert_peer(Arc::clone(&peers), announcement, addr).await;
+      upsert_peer(Arc::clone(&peers), announcement, addr, event_sender.clone()).await;
     }
   })
 }
 
-async fn upsert_peer(peers: Peers, announcement: packet::Announcement, addr: std::net::SocketAddr) {
+async fn upsert_peer(
+  peers: Peers,
+  announcement: packet::Announcement,
+  addr: std::net::SocketAddr,
+  event_sender: event::EventSender,
+) {
   let mut peers = peers.write().await;
 
   println!("upserting peer, announcement = {announcement:?}, addr = {addr}");
 
-  // TODO: emit event?
-  match peers.entry(announcement.id) {
-    std::collections::hash_map::Entry::Occupied(mut occupied_entry) => {
-      let peer = occupied_entry.get_mut();
+  let peer = match peers.entry(announcement.id) {
+    std::collections::hash_map::Entry::Occupied(occupied_entry) => {
+      let peer = occupied_entry.into_mut();
       peer.last_seen = tokio::time::Instant::now();
+      peer
     }
     std::collections::hash_map::Entry::Vacant(vacant_entry) => {
-      vacant_entry.insert(Peer::new(announcement.id, announcement.device, addr));
+      let peer = Peer::new(announcement.id, announcement.device, addr);
+      vacant_entry.insert(peer)
     }
+  };
+
+  if let Err(e) = event_sender.send(NebulaEvent::PeerUpserted {
+    peer: (*peer).into(),
+  }) {
+    eprintln!("Error while sending event: {e}");
   }
 }
 
-fn remove(peers: Peers) -> tokio::task::JoinHandle<()> {
+fn remove(peers: Peers, event_sender: event::EventSender) -> tokio::task::JoinHandle<()> {
   tokio::spawn(async move {
     loop {
       tokio::time::sleep(Duration::from_secs(25)).await;
@@ -134,7 +156,9 @@ fn remove(peers: Peers) -> tokio::task::JoinHandle<()> {
       let mut peers_write = peers.write().await;
       peers_write.retain(|_, peer| {
         if peer.last_seen.elapsed() > Duration::from_secs(PEER_TIMEOUT_SECS) {
-          // TODO: emit event?
+          if let Err(e) = event_sender.send(NebulaEvent::PeerDisconnected { id: peer.id }) {
+            eprintln!("Error while sending event: {e}");
+          }
           false
         } else {
           true

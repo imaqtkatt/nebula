@@ -1,26 +1,31 @@
 use std::time::Duration;
 
-use crate::{discovery::Peers, file_transfer};
+use tokio::sync::Mutex;
+
+use crate::{discovery::Peers, event, file_transfer};
 
 #[derive(Clone)]
 pub struct AppState {
   peers: Peers,
   file_transfer_event_emitter: tokio::sync::mpsc::UnboundedSender<file_transfer::TransferData>,
+  pub event_receiver: std::sync::Arc<Mutex<event::EventReceiver>>,
 }
 
 impl AppState {
   pub fn new(
     peers: &Peers,
     file_transfer_event_emitter: tokio::sync::mpsc::UnboundedSender<file_transfer::TransferData>,
+    event_receiver: event::EventReceiver,
   ) -> Self {
     Self {
       peers: std::sync::Arc::clone(peers),
       file_transfer_event_emitter,
+      event_receiver: std::sync::Arc::new(Mutex::new(event_receiver)),
     }
   }
 }
 
-#[derive(serde::Serialize)]
+#[derive(Debug, serde::Serialize)]
 pub struct JsonPeer {
   id: uuid::Uuid,
   device: crate::device::Device,
@@ -37,14 +42,14 @@ impl From<crate::discovery::Peer> for JsonPeer {
   }
 }
 
-pub async fn get_peers(state: axum::extract::State<AppState>) -> axum::Json<Vec<JsonPeer>> {
-  let peers_read = state.peers.read().await;
+// pub async fn get_peers(state: axum::extract::State<AppState>) -> axum::Json<Vec<JsonPeer>> {
+//   let peers_read = state.peers.read().await;
 
-  let json_peers = peers_read
-    .values()
-    .copied()
-    .map(JsonPeer::from)
-    .collect::<Vec<_>>();
+//   let json_peers = peers_read
+//     .values()
+//     .copied()
+//     .map(JsonPeer::from)
+//     .collect::<Vec<_>>();
 
-  axum::Json(json_peers)
-}
+//   axum::Json(json_peers)
+// }

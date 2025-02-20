@@ -4,7 +4,7 @@ use std::{
   sync::Arc,
 };
 
-use discovery::Peers;
+use axum::ServiceExt;
 use file_transfer::FileTransfer;
 use futures::{SinkExt, StreamExt};
 use tokio::{
@@ -15,6 +15,7 @@ use tokio::{
 mod api;
 mod device;
 mod discovery;
+mod event;
 mod file_transfer;
 mod packet;
 mod serde;
@@ -44,20 +45,31 @@ async fn main() -> std::io::Result<()> {
     device: device::DEVICE,
   };
 
-  let discovery = discovery::Discovery::init(socket, announcement, Arc::clone(&peers)).await?;
+  let (event_sender, event_receiver) = event::new_channel();
+  let _discovery =
+    discovery::Discovery::init(socket, announcement, &event_sender, Arc::clone(&peers)).await?;
 
-  let (_ft, ft_evt_emitter) = FileTransfer::init(Arc::clone(&peers), listener);
+  let (_file_transfer, file_transfer_emitter) = FileTransfer::init(Arc::clone(&peers), listener);
 
-  if let Err(e) = discovery.block().await {
-    eprintln!("Error: {e}");
-  }
+  let state = api::AppState::new(&peers, file_transfer_emitter, event_receiver);
 
-  let http_listener = TcpListener::bind("127.0.0.1:35436").await?;
+  let http_listener = TcpListener::bind("localhost:35436").await?;
   let app = axum::Router::new()
     .route("/ws", axum::routing::any(ws_handler))
-    .with_state(api::AppState::new(&peers, ft_evt_emitter));
+    .route("/page", axum::routing::get(page))
+    .with_state(state);
 
-  axum::serve(http_listener, app).await
+  axum::serve(
+    http_listener,
+    app.into_make_service_with_connect_info::<SocketAddr>(),
+  )
+  .await
+}
+
+async fn page() -> impl axum::response::IntoResponse {
+  const PAGE: &[u8] = include_bytes!("../assets/page.html");
+
+  axum::response::Html(PAGE)
 }
 
 async fn ws_handler(
@@ -70,26 +82,62 @@ async fn ws_handler(
 
 async fn handle_ws(
   socket: axum::extract::ws::WebSocket,
-  who: SocketAddr,
-  state: axum::extract::State<api::AppState>,
+  _who: SocketAddr,
+  axum::extract::State(state): axum::extract::State<api::AppState>,
 ) {
   let (mut sender, mut receiver) = socket.split();
 
-  let send_task = tokio::spawn(async move { loop {} });
+  let mut send_task = tokio::spawn(async move {
+    let mut receiver = state.event_receiver.lock().await;
 
-  let recv_task = tokio::spawn(async move {
     loop {
-      let x = match receiver.next().await {
+      if let Some(event) = receiver.recv().await {
+        let json_message = match serde_json::to_vec(&event) {
+          Ok(value) => value,
+          Err(e) => {
+            eprintln!("Error while serializing event: {e}");
+            continue;
+          }
+        };
+
+        if let Err(e) = sender
+          .send(axum::extract::ws::Message::Binary(json_message.into()))
+          .await
+        {
+          eprintln!("Error while sending event: {e}");
+        }
+      }
+    }
+  });
+
+  let mut recv_task = tokio::spawn(async move {
+    loop {
+      let msg = match receiver.next().await {
         Some(value) => value,
         None => continue,
       };
 
-      match x {
-        Ok(msg) => {
-          todo!()
-        }
-        Err(e) => eprintln!("{e}"),
+      if let Err(e) = msg {
+        eprintln!("{e}");
+        continue;
+      }
+
+      if let Ok(axum::extract::ws::Message::Close(x)) = msg {
+        break;
+      }
+
+      if let Ok(axum::extract::ws::Message::Text(x)) = msg {
+        todo!("{x}")
       }
     }
   });
+
+  tokio::select! {
+    _rv_a = (&mut send_task) => {
+      recv_task.abort();
+    }
+    _rv_b = (&mut recv_task) => {
+      send_task.abort();
+    }
+  }
 }

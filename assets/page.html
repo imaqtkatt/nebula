@@ -1,0 +1,38 @@
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>Nebula</title>
+</head>
+<body>
+  <span>test<span>
+  <script>
+    const WS_URL = "ws://localhost:35436/ws";
+
+    function connectWebSocket() {
+      const socket = new WebSocket(WS_URL);
+
+      socket.onopen = () => {
+        console.log("WebSocket connected to", WS_URL);
+      };
+
+      socket.onmessage = (event) => {
+        console.log("Received message:", event.data);
+      };
+
+      socket.onerror = (error) => {
+        console.error("WebSocket error:", error);
+      };
+
+      socket.onclose = (event) => {
+        console.log("WebSocket closed", event);
+        setTimeout(connectWebSocket, 3000); // Reconnect after 3 seconds
+      };
+
+      return socket;
+    }
+
+    connectWebSocket();
+  </script>
+</body>
