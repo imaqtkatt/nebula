@@ -4,7 +4,6 @@ use std::{
   sync::Arc,
 };
 
-use axum::ServiceExt;
 use file_transfer::FileTransfer;
 use futures::{SinkExt, StreamExt};
 use tokio::{
@@ -28,7 +27,7 @@ const INTERFACE_ADDR_V6: Ipv6Addr = Ipv6Addr::UNSPECIFIED;
 const MULTI_ADDR_V4: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 1);
 const MULTICAST_ADDR_V4: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(MULTI_ADDR_V4), PORT);
 
-const MULTI_ADDR_V6: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 123);
+const MULTI_ADDR_V6: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 1);
 const MULTICAST_ADDR_V6: SocketAddr = SocketAddr::new(std::net::IpAddr::V6(MULTI_ADDR_V6), PORT);
 
 const USE_IPV6: bool = false;
@@ -69,8 +68,8 @@ async fn main() -> std::io::Result<()> {
   };
 
   let (event_sender, event_receiver) = event::new_channel();
-  let _discovery =
-    discovery::Discovery::init(socket, announcement, &event_sender, Arc::clone(&peers)).await?;
+  discovery::Discovery::<USE_IPV6>::init(socket, announcement, &event_sender, Arc::clone(&peers))
+    .await?;
 
   let (_file_transfer, file_transfer_emitter) = FileTransfer::init(Arc::clone(&peers), listener);
 
@@ -98,14 +97,12 @@ async fn page() -> impl axum::response::IntoResponse {
 async fn ws_handler(
   ws: axum::extract::ws::WebSocketUpgrade,
   state: axum::extract::State<api::AppState>,
-  axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<SocketAddr>,
 ) -> impl axum::response::IntoResponse {
-  ws.on_upgrade(move |socket| handle_ws(socket, addr, state))
+  ws.on_upgrade(move |socket| handle_ws(socket, state))
 }
 
 async fn handle_ws(
   socket: axum::extract::ws::WebSocket,
-  _who: SocketAddr,
   axum::extract::State(state): axum::extract::State<api::AppState>,
 ) {
   let (mut sender, mut receiver) = socket.split();
@@ -115,7 +112,7 @@ async fn handle_ws(
 
     loop {
       if let Some(event) = receiver.recv().await {
-        let json_message = match serde_json::to_vec(&event) {
+        let json_message = match serde_json::to_string(&event) {
           Ok(value) => value,
           Err(e) => {
             eprintln!("Error while serializing event: {e}");
@@ -124,7 +121,7 @@ async fn handle_ws(
         };
 
         if let Err(e) = sender
-          .send(axum::extract::ws::Message::Binary(json_message.into()))
+          .send(axum::extract::ws::Message::Text(json_message.into()))
           .await
         {
           eprintln!("Error while sending event: {e}");

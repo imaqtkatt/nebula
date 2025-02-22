@@ -7,10 +7,10 @@ use crate::{
   event::{self, NebulaEvent},
   packet,
   serde::{Deserialize, Serialize},
-  MULTICAST_ADDR_V4, MULTICAST_ADDR_V6, USE_IPV6,
+  MULTICAST_ADDR_V4, MULTICAST_ADDR_V6,
 };
 
-pub struct Discovery {
+pub struct Discovery<const IPV6: bool> {
   announce: tokio::task::JoinHandle<()>,
   discover: tokio::task::JoinHandle<()>,
   remove: tokio::task::JoinHandle<()>,
@@ -18,7 +18,7 @@ pub struct Discovery {
 
 pub type Peers = Arc<RwLock<HashMap<uuid::Uuid, Peer>>>;
 
-const PEER_TIMEOUT_SECS: u64 = 40;
+const PEER_TIMEOUT_SECS: u64 = 20;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Peer {
@@ -39,7 +39,7 @@ impl Peer {
   }
 }
 
-impl Discovery {
+impl<const IPV6: bool> Discovery<IPV6> {
   pub async fn init(
     socket: Arc<UdpSocket>,
     announcement: packet::Announcement,
@@ -47,7 +47,7 @@ impl Discovery {
     peers: Peers,
   ) -> std::io::Result<Self> {
     Ok(Self {
-      announce: announce(Arc::clone(&socket), announcement).await?,
+      announce: announce::<IPV6>(Arc::clone(&socket), announcement).await?,
       discover: discover(
         Arc::clone(&socket),
         event_sender.clone(),
@@ -58,7 +58,7 @@ impl Discovery {
   }
 }
 
-impl Discovery {
+impl<const IPV6: bool> Discovery<IPV6> {
   pub async fn block(self) -> Result<(), tokio::task::JoinError> {
     self
       .announce
@@ -68,14 +68,14 @@ impl Discovery {
   }
 }
 
-async fn announce(
+async fn announce<const IPV6: bool>(
   socket: Arc<UdpSocket>,
   announcement: packet::Announcement,
 ) -> std::io::Result<tokio::task::JoinHandle<()>> {
   let mut buf = vec![];
   announcement.serialize(&mut buf).await?;
 
-  let multi_addr = if USE_IPV6 {
+  let multi_addr = if IPV6 {
     MULTICAST_ADDR_V6
   } else {
     MULTICAST_ADDR_V4
@@ -157,19 +157,22 @@ async fn upsert_peer(
 fn remove(peers: Peers, event_sender: event::EventSender) -> tokio::task::JoinHandle<()> {
   tokio::spawn(async move {
     loop {
-      tokio::time::sleep(Duration::from_secs(25)).await;
+      tokio::time::sleep(Duration::from_secs(10)).await;
 
       let mut peers_write = peers.write().await;
-      peers_write.retain(|_, peer| {
-        if peer.last_seen.elapsed() > Duration::from_secs(PEER_TIMEOUT_SECS) {
-          if let Err(e) = event_sender.send(NebulaEvent::PeerDisconnected { id: peer.id }) {
-            eprintln!("Error while sending event: {e}");
-          }
-          false
-        } else {
-          true
+
+      let peers_to_remove: Vec<_> = peers_write
+        .iter()
+        .filter(|(_, peer)| peer.last_seen.elapsed() > Duration::from_secs(PEER_TIMEOUT_SECS))
+        .map(|(id, _)| *id)
+        .collect();
+
+      for peer_id in peers_to_remove {
+        if let Err(e) = event_sender.send(NebulaEvent::PeerDisconnected { id: peer_id }) {
+          eprintln!("Error while sending event: {e}");
         }
-      });
+        peers_write.remove(&peer_id);
+      }
     }
   })
 }

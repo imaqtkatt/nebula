@@ -1,16 +1,47 @@
-
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="ie=edge" />
   <title>Nebula</title>
 </head>
 <body>
-  <span>test<span>
+  <h1>Nebula</h1>
+  <table id="tab">
+    <thead>
+      <th scope="col">Id</th>
+      <th scope="col">Device</th>
+    </thead>
+    <tbody id="devices-body"></tbody>
+  </table>
   <script>
     const WS_URL = "ws://localhost:35436/ws";
 
-    function connectWebSocket() {
+    const upsertPeer = (peer) => {
+      let row = document.getElementById(peer.id);
+      const devicesBody = document.getElementById("devices-body");
+
+      if (!row) {
+        row = document.createElement("tr");
+        row.id = peer.id;
+        row.innerHTML = `
+          <th scope="row">${peer.id}</th>
+          <td>${peer.device}</td>
+          <td><input type="file" /></td>
+          `;
+        devicesBody.appendChild(row);
+      } else {
+        row.children[1].textContent = peer.device;
+      }
+    };
+
+    const removePeer = (peer_id) => {
+      let row = document.getElementById(peer_id);
+      if (row) {
+        row.remove();
+      }
+    };
+
+    const connectWebSocket = () => {
       const socket = new WebSocket(WS_URL);
 
       socket.onopen = () => {
@@ -18,7 +49,19 @@
       };
 
       socket.onmessage = (event) => {
-        console.log("Received message:", event.data);
+        const PEER_UPSERTED = "PeerUpserted";
+        const PEER_DISCONNECTED = "PeerDisconnected";
+        const PEER = "peer";
+
+        let json = JSON.parse(event.data);
+        console.log(json);
+
+        if (json[PEER_UPSERTED]) {
+          upsertPeer(json[PEER_UPSERTED][PEER]);
+        } else if (json[PEER_DISCONNECTED]) {
+          removePeer(json[PEER_DISCONNECTED]["id"]);
+        } else {
+        }
       };
 
       socket.onerror = (error) => {
@@ -31,7 +74,7 @@
       };
 
       return socket;
-    }
+    };
 
     connectWebSocket();
   </script>
