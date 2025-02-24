@@ -453,6 +453,7 @@ name = "nebula"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64",
  "futures",
  "futures-util",
  "serde",

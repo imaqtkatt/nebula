@@ -9,8 +9,15 @@ use crate::discovery::Peers;
 
 #[derive(Debug)]
 pub struct TransferData {
-  addr: SocketAddr,
-  data: Vec<u8>,
+  pub addr: SocketAddr,
+  pub data: Vec<u8>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename(deserialize = "FileTransfer"))]
+pub struct FileTransferWsEvent {
+  pub id: uuid::Uuid,
+  pub data: String,
 }
 
 pub struct FileTransfer {
@@ -41,8 +48,8 @@ fn sender(
 ) -> tokio::task::JoinHandle<()> {
   tokio::task::spawn(async move {
     loop {
-      if let Some(evt) = evt_listener.recv().await {
-        let mut stream = match tokio::net::TcpStream::connect(evt.addr).await {
+      if let Some(event) = evt_listener.recv().await {
+        let mut stream = match tokio::net::TcpStream::connect(event.addr).await {
           Ok(value) => value,
           Err(e) => {
             eprintln!("Error while connecting to peer: {e}");
@@ -51,7 +58,7 @@ fn sender(
         };
 
         tokio::spawn(async move {
-          if let Err(e) = stream.write_all(&evt.data).await {
+          if let Err(e) = stream.write_all(&event.data).await {
             eprintln!("Error while sending file data: {e}");
           }
         });
@@ -86,7 +93,11 @@ async fn receive_file(mut stream: TcpStream) -> std::io::Result<()> {
   let mut read = 0;
   let mut buf = [0u8; 1024];
 
-  let file_name = format!("{}_nebula", std::time::Instant::now().elapsed().as_secs());
+  let time = match std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH) {
+    Ok(x) => x.as_secs().to_string(),
+    Err(_) => todo!(),
+  };
+  let file_name = format!("./{}_nebula", time);
   let mut file_path = PathBuf::new();
   file_path.push(file_name);
   file_path.set_extension("tmp");

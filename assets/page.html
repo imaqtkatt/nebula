@@ -14,8 +14,6 @@
     <tbody id="devices-body"></tbody>
   </table>
   <script>
-    const WS_URL = "ws://localhost:35436/ws";
-
     const upsertPeer = (peer) => {
       let row = document.getElementById(peer.id);
       const devicesBody = document.getElementById("devices-body");
@@ -26,12 +24,31 @@
         row.innerHTML = `
           <th scope="row">${peer.id}</th>
           <td>${peer.device}</td>
-          <td><input type="file" /></td>
+          <td><input type="file" onchange="sendFileTransferEvent(event, '${peer.id}')"/></td>
           `;
         devicesBody.appendChild(row);
       } else {
         row.children[1].textContent = peer.device;
       }
+    };
+
+    const sendFileTransferEvent = (event, peer_id) => {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      let extension = file.type.replace(/(.*)\//g, "") ?? "tmp";
+
+      let reader = new FileReader();
+      reader.onload = () => {
+        nebulaWs.send(
+          JSON.stringify({
+            id: peer_id,
+            extension: extension,
+            data: reader.result.substr(reader.result.indexOf(",") + 1),
+          }),
+        );
+      };
+      reader.readAsDataURL(file);
     };
 
     const removePeer = (peer_id) => {
@@ -40,6 +57,8 @@
         row.remove();
       }
     };
+
+    const WS_URL = "ws://localhost:35436/ws";
 
     const connectWebSocket = () => {
       const socket = new WebSocket(WS_URL);
@@ -76,6 +95,6 @@
       return socket;
     };
 
-    connectWebSocket();
+    var nebulaWs = connectWebSocket();
   </script>
 </body>

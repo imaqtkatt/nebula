@@ -4,7 +4,8 @@ use std::{
   sync::Arc,
 };
 
-use file_transfer::FileTransfer;
+use ::serde::Deserialize;
+use file_transfer::{FileTransfer, FileTransferWsEvent};
 use futures::{SinkExt, StreamExt};
 use tokio::{
   net::{TcpListener, UdpSocket},
@@ -107,8 +108,10 @@ async fn handle_ws(
 ) {
   let (mut sender, mut receiver) = socket.split();
 
+  let event_receiver = state.event_receiver.clone();
+
   let mut send_task = tokio::spawn(async move {
-    let mut receiver = state.event_receiver.lock().await;
+    let mut receiver = event_receiver.lock().await;
 
     loop {
       if let Some(event) = receiver.recv().await {
@@ -138,16 +141,26 @@ async fn handle_ws(
       };
 
       if let Err(e) = msg {
-        eprintln!("{e}");
+        eprintln!("WS receive error: {e}");
         continue;
       }
 
-      if let Ok(axum::extract::ws::Message::Close(x)) = msg {
+      if let Ok(axum::extract::ws::Message::Close(_)) = msg {
         break;
       }
 
-      if let Ok(axum::extract::ws::Message::Text(x)) = msg {
-        todo!("{x}")
+      if let Ok(axum::extract::ws::Message::Text(text)) = msg {
+        let value = match serde_json::from_str::<FileTransferWsEvent>(text.as_str()) {
+          Ok(value) => value,
+          Err(e) => {
+            eprintln!("Error while deserializing file transfer event: {e}");
+            continue;
+          }
+        };
+
+        if let Err(e) = state.emit_file_transfer_event(value).await {
+          eprintln!("Error while sending file transfer event: {e}");
+        }
       }
     }
   });

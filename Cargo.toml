@@ -14,3 +14,4 @@ futures-util = { version = "0.3", default-features = false, features = [
   "sink",
   "std",
 ] }
+base64 = "0.22.1"
