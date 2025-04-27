@@ -37,7 +37,7 @@
       if (!file) return;
 
       let extension = file.type.replace(/(.*)\//g, "") ?? "tmp";
-      let file_name = file.name ?? "bruh";
+      let file_name = file.name?.replace(/\.[^/.]+$/, "") ?? "bruh";
 
       let reader = new FileReader();
       reader.onload = () => {
