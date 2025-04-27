@@ -46,12 +46,21 @@ impl AppState {
     };
 
     let addr = peer.addr;
+    let extension = fte.extension;
+    let file_name = fte.file_name;
     let data = base64::engine::general_purpose::STANDARD
       .decode(fte.data)
       .expect("decode base64");
 
     let guard = self.file_transfer_event_emitter.lock().await;
-    guard.send(file_transfer::TransferData { addr, data })
+    guard.send(file_transfer::TransferData {
+      addr,
+      extension,
+      file_name,
+      data,
+    })?;
+
+    Ok(())
   }
 }
 

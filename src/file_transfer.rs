@@ -5,11 +5,16 @@ use tokio::{
   net::{TcpListener, TcpStream},
 };
 
-use crate::discovery::Peers;
+use crate::{
+  discovery::Peers,
+  serde::{Deserialize, Serialize},
+};
 
 #[derive(Debug)]
 pub struct TransferData {
   pub addr: SocketAddr,
+  pub extension: String,
+  pub file_name: String,
   pub data: Vec<u8>,
 }
 
@@ -17,6 +22,8 @@ pub struct TransferData {
 #[serde(rename(deserialize = "FileTransfer"))]
 pub struct FileTransferWsEvent {
   pub id: uuid::Uuid,
+  pub extension: String,
+  pub file_name: String,
   pub data: String,
 }
 
@@ -58,6 +65,15 @@ fn sender(
         };
 
         tokio::spawn(async move {
+          let header = crate::header::Header {
+            file_name: event.file_name,
+            file_ext: event.extension,
+          };
+          if let Err(e) = header.serialize(&mut stream).await {
+            eprintln!("Error while serializing file header: {e}");
+            return;
+          }
+
           if let Err(e) = stream.write_all(&event.data).await {
             eprintln!("Error while sending file data: {e}");
           }
@@ -88,6 +104,8 @@ fn receiver(listener: TcpListener) -> tokio::task::JoinHandle<()> {
 }
 
 async fn receive_file(mut stream: TcpStream) -> std::io::Result<()> {
+  let header = crate::header::Header::deserialize(&mut stream).await?;
+
   const MAX_BYTES: usize = 33554432;
 
   let mut read = 0;
@@ -97,10 +115,10 @@ async fn receive_file(mut stream: TcpStream) -> std::io::Result<()> {
     Ok(duration) => duration.as_secs().to_string(),
     Err(e) => return Err(std::io::Error::other(e)),
   };
-  let file_name = format!("./{}_nebula", time);
+  let file_name = format!("./{}_{}", header.file_name, time);
   let mut file_path = PathBuf::new();
   file_path.push(file_name);
-  file_path.set_extension("tmp");
+  file_path.set_extension(header.file_ext);
 
   let mut file = std::fs::File::options()
     .create(true)

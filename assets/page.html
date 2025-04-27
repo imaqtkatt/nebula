@@ -37,6 +37,7 @@
       if (!file) return;
 
       let extension = file.type.replace(/(.*)\//g, "") ?? "tmp";
+      let file_name = file.name ?? "bruh";
 
       let reader = new FileReader();
       reader.onload = () => {
@@ -44,6 +45,7 @@
           JSON.stringify({
             id: peer_id,
             extension: extension,
+            file_name: file_name,
             data: reader.result.substr(reader.result.indexOf(",") + 1),
           }),
         );
