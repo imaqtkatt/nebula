@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+  collections::{hash_map::Entry, HashMap},
+  sync::Arc,
+  time::Duration,
+};
 
 use tokio::{net::UdpSocket, sync::RwLock};
 
@@ -55,16 +59,6 @@ impl<const IPV6: bool> Discovery<IPV6> {
       ),
       remove: remove(Arc::clone(&peers), event_sender.clone()),
     })
-  }
-}
-
-impl<const IPV6: bool> Discovery<IPV6> {
-  pub async fn block(self) -> Result<(), tokio::task::JoinError> {
-    self
-      .announce
-      .await
-      .and(self.discover.await)
-      .and(self.remove.await)
   }
 }
 
@@ -136,12 +130,12 @@ async fn upsert_peer(
   println!("upserting peer, announcement = {announcement:?}, addr = {addr}");
 
   let peer = match peers.entry(announcement.id) {
-    std::collections::hash_map::Entry::Occupied(occupied_entry) => {
+    Entry::Occupied(occupied_entry) => {
       let peer = occupied_entry.into_mut();
       peer.last_seen = tokio::time::Instant::now();
       peer
     }
-    std::collections::hash_map::Entry::Vacant(vacant_entry) => {
+    Entry::Vacant(vacant_entry) => {
       let peer = Peer::new(announcement.id, announcement.device, addr);
       vacant_entry.insert(peer)
     }

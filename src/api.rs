@@ -45,15 +45,13 @@ impl AppState {
       unreachable!()
     };
 
+    let addr = peer.addr;
     let data = base64::engine::general_purpose::STANDARD
       .decode(fte.data)
       .expect("decode base64");
 
     let guard = self.file_transfer_event_emitter.lock().await;
-    guard.send(file_transfer::TransferData {
-      addr: peer.addr,
-      data,
-    })
+    guard.send(file_transfer::TransferData { addr, data })
   }
 }
 
@@ -73,15 +71,3 @@ impl From<crate::discovery::Peer> for JsonPeer {
     }
   }
 }
-
-// pub async fn get_peers(state: axum::extract::State<AppState>) -> axum::Json<Vec<JsonPeer>> {
-//   let peers_read = state.peers.read().await;
-
-//   let json_peers = peers_read
-//     .values()
-//     .copied()
-//     .map(JsonPeer::from)
-//     .collect::<Vec<_>>();
-
-//   axum::Json(json_peers)
-// }

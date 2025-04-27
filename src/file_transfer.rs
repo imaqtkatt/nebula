@@ -94,8 +94,8 @@ async fn receive_file(mut stream: TcpStream) -> std::io::Result<()> {
   let mut buf = [0u8; 1024];
 
   let time = match std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH) {
-    Ok(x) => x.as_secs().to_string(),
-    Err(_) => todo!(),
+    Ok(duration) => duration.as_secs().to_string(),
+    Err(e) => return Err(std::io::Error::other(e)),
   };
   let file_name = format!("./{}_nebula", time);
   let mut file_path = PathBuf::new();
@@ -109,7 +109,7 @@ async fn receive_file(mut stream: TcpStream) -> std::io::Result<()> {
 
   loop {
     if read > MAX_BYTES {
-      todo!("");
+      todo!("MAX_BYTES exceeded");
     }
 
     let n = stream.read(&mut buf).await?;

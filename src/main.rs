@@ -4,7 +4,6 @@ use std::{
   sync::Arc,
 };
 
-use ::serde::Deserialize;
 use file_transfer::{FileTransfer, FileTransferWsEvent};
 use futures::{SinkExt, StreamExt};
 use tokio::{
