@@ -16,6 +16,7 @@ mod device;
 mod discovery;
 mod event;
 mod file_transfer;
+mod header;
 mod packet;
 mod serde;
 
@@ -80,6 +81,8 @@ async fn main() -> std::io::Result<()> {
     .route("/ws", axum::routing::any(ws_handler))
     .route("/page", axum::routing::get(page))
     .with_state(state);
+
+  println!("page available @ http://localhost:35436/page");
 
   axum::serve(
     http_listener,
