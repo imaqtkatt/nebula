@@ -10,13 +10,12 @@ Nebula is a tool for sending files to nearby devices within the same network.
 
 ### 1. Discovery
 
-First of all, Nebula uses UDP Multicast to discover other devices running Nebula on the same
-network.
+Nebula uses UDP Multicast to discover other devices running Nebula on the same network.
 
 ### 2. Interface
 
 Navigate to `http://localhost:35436/page` and you will see a _beatiful_ interface listing discovered
-devices, with a button to send then a file.
+devices, with a button to send them a file.
 
 ### 3. File transfer
 
