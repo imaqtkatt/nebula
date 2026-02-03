@@ -1,0 +1,10 @@
+[package]
+name = "nebula-daemon"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.5.54", features = ["derive"] }
+tokio = { workspace = true }
+nebula-discovery = { path = "../nebula-discovery" }
+nebula-commons = { path = "../nebula-commons" }

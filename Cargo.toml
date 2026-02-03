@@ -1,0 +1,8 @@
+[workspace]
+resolver = "3"
+members = ["nebula-commons", "nebula-daemon", "nebula-discovery"]
+
+[workspace.dependencies]
+tokio = { version = "1.49.0", features = ["full"] }
+uuid = { version = "1.13.1", "features" = ["v4", "fast-rng", "serde"] }
+serde = { version = "1.0.228", features = ["derive"] }

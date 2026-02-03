@@ -1,0 +1,10 @@
+[package]
+name = "nebula-discovery"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { workspace = true }
+uuid = { workspace = true }
+nebula-commons = { path = "../nebula-commons" }
+bincode = "1.3"
