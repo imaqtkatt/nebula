@@ -24,7 +24,7 @@ pub const CURRENT_DEVICE: Device = if cfg!(target_os = "macos") {
     Device::Unknown
 };
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default, Debug)]
 pub struct PeerId(uuid::Uuid);
 
 impl PeerId {

@@ -7,4 +7,5 @@ edition = "2024"
 tokio = { workspace = true }
 uuid = { workspace = true }
 nebula-commons = { path = "../nebula-commons" }
+nebula-event = { path = "../nebula-event" }
 bincode = "1.3"

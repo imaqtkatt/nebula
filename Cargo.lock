@@ -216,6 +216,7 @@ dependencies = [
  "clap",
  "nebula-commons",
  "nebula-discovery",
+ "nebula-event",
  "tokio",
 ]
 
@@ -225,8 +226,16 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "nebula-commons",
+ "nebula-event",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "nebula-event"
+version = "0.1.0"
+dependencies = [
+ "tokio",
 ]
 
 [[package]]
