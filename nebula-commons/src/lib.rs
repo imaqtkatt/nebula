@@ -33,7 +33,7 @@ impl PeerId {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Peer {
     pub id: PeerId,
     pub device: Device,
@@ -131,5 +131,89 @@ impl Deserialize for AnnouncePacket {
         let device = Device::deserialize(rd).await?;
 
         Ok(Self { id, device })
+    }
+}
+
+impl Serialize for Peer {
+    async fn serialize<W: tokio::io::AsyncWriteExt + Unpin>(
+        &self,
+        wr: &mut W,
+    ) -> std::io::Result<()> {
+        self.id.serialize(wr).await?;
+        self.device.serialize(wr).await?;
+
+        SerializableSocketAddr::new(self.addr).serialize(wr).await?;
+
+        let last_seen = self.last_seen.elapsed().as_secs().to_be_bytes();
+        wr.write_all(&last_seen).await?;
+
+        Ok(())
+    }
+}
+
+pub struct SerializableSocketAddr(std::net::SocketAddr);
+
+impl SerializableSocketAddr {
+    pub fn new(addr: std::net::SocketAddr) -> Self {
+        Self(addr)
+    }
+
+    pub fn get(&self) -> std::net::SocketAddr {
+        self.0
+    }
+}
+
+impl Serialize for SerializableSocketAddr {
+    async fn serialize<W: tokio::io::AsyncWriteExt + Unpin>(
+        &self,
+        wr: &mut W,
+    ) -> std::io::Result<()> {
+        match self.0.ip() {
+            std::net::IpAddr::V4(ipv4_addr) => {
+                wr.write(b"V4").await?;
+                let bits = ipv4_addr.to_bits();
+                wr.write_u32(bits).await?;
+            }
+            std::net::IpAddr::V6(ipv6_addr) => {
+                wr.write(b"V6").await?;
+                let bits = ipv6_addr.to_bits();
+                wr.write_u128(bits).await?;
+            }
+        }
+        let port = self.0.port();
+        wr.write_u16(port).await
+    }
+}
+
+impl Deserialize for SerializableSocketAddr {
+    async fn deserialize<R: tokio::io::AsyncReadExt + Unpin>(rd: &mut R) -> std::io::Result<Self> {
+        let mut tag_buf = [0u8; 2];
+        rd.read_exact(&mut tag_buf).await?;
+
+        let addr = match &tag_buf {
+            b"V4" => {
+                let bits = rd.read_u32().await?;
+                let port = rd.read_u16().await?;
+
+                std::net::SocketAddr::V4(std::net::SocketAddrV4::new(
+                    std::net::Ipv4Addr::from_bits(bits),
+                    port,
+                ))
+            }
+            b"V6" => {
+                let bits = rd.read_u128().await?;
+                let port = rd.read_u16().await?;
+
+                std::net::SocketAddr::V6(std::net::SocketAddrV6::new(
+                    std::net::Ipv6Addr::from_bits(bits),
+                    port,
+                    0,
+                    0,
+                ))
+            }
+            _ => todo!(),
+        };
+
+        Ok(SerializableSocketAddr(addr))
     }
 }

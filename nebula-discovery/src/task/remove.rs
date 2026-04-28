@@ -5,7 +5,7 @@ const PEER_TIMEOUT_SECS: time::Duration = time::Duration::from_secs(30);
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PeerDisconnectedEvent {
-    peer_id: nebula_commons::PeerId,
+    pub peer_id: nebula_commons::PeerId,
 }
 
 impl nebula_event::Event for PeerDisconnectedEvent {}
@@ -34,4 +34,17 @@ pub(crate) fn remove(
             }
         }
     })
+}
+
+impl nebula_commons::serialization::SerializablePacket for PeerDisconnectedEvent {
+    const TAG: u8 = 0x2;
+}
+
+impl nebula_commons::serialization::Serialize for PeerDisconnectedEvent {
+    async fn serialize<W: tokio::io::AsyncWriteExt + Unpin>(
+        &self,
+        wr: &mut W,
+    ) -> std::io::Result<()> {
+        self.peer_id.serialize(wr).await
+    }
 }

@@ -24,7 +24,11 @@ impl Discovery {
         };
 
         Self {
-            discover_task: task::discover::discover(Arc::clone(&socket), Arc::clone(&peers)),
+            discover_task: task::discover::discover(
+                Arc::clone(&socket),
+                Arc::clone(&peers),
+                emitter.clone(),
+            ),
             accept_task: task::announce::announce(
                 Arc::clone(&socket),
                 multi_addr,
@@ -37,31 +41,74 @@ impl Discovery {
 
     pub fn configure_events(
         listener: &mut nebula_event::BoundedEventListener,
-        daemon_socket: std::sync::Arc<tokio::net::UdpSocket>,
+        daemon_socket: &std::sync::Arc<tokio::net::UdpSocket>,
     ) {
         let daemon_socket = daemon_socket.clone();
         let daemon_socket2 = daemon_socket.clone();
+        let daemon_socket3 = daemon_socket.clone();
 
-        listener
-            .register(move |e| tell_peer_disconnected(std::sync::Arc::clone(&daemon_socket), e));
+        listener.register(move |e| {
+            let daemon_socket = daemon_socket.clone();
+            async move {
+                if let Err(e) = tell_peer_disconnected(daemon_socket, e).await {
+                    eprintln!("{e:?}")
+                }
+            }
+        });
 
-        listener.register(move |e| tell_announced(std::sync::Arc::clone(&daemon_socket2), e));
+        listener.register(move |e| {
+            let daemon_socket = daemon_socket2.clone();
+            async move {
+                if let Err(e) = tell_announced(daemon_socket, e).await {
+                    eprintln!("{e}")
+                }
+            }
+        });
+
+        listener.register(move |e| {
+            let daemon_socket = daemon_socket3.clone();
+            async move {
+                if let Err(e) = tell_peer_upserted(daemon_socket, e).await {
+                    eprintln!("{e}")
+                }
+            }
+        });
     }
 }
 
 async fn tell_peer_disconnected(
     daemon: std::sync::Arc<tokio::net::UdpSocket>,
-    _: crate::task::remove::PeerDisconnectedEvent,
-) {
-    _ = daemon.send(b"Hello").await;
+    e: crate::task::remove::PeerDisconnectedEvent,
+) -> std::io::Result<()> {
+    use nebula_commons::serialization::SerializablePacket;
+
+    let mut buf_writer = tokio::io::BufWriter::new(vec![]);
+    e.serialize(&mut buf_writer).await?;
+
+    daemon.send(buf_writer.buffer()).await?;
+
+    Ok(())
 }
 
 async fn tell_announced(
     daemon: std::sync::Arc<tokio::net::UdpSocket>,
     _: crate::task::announce::Announced,
-) {
-    if let Err(e) = daemon.send(b"Ok").await {
-        panic!("DUMB: {e}");
-    }
+) -> std::io::Result<()> {
+    _ = daemon.send(b"Ok").await?;
     println!("announced");
+    Ok(())
+}
+
+async fn tell_peer_upserted(
+    daemon: std::sync::Arc<tokio::net::UdpSocket>,
+    e: crate::task::discover::PeerUpsertedEvent,
+) -> std::io::Result<()> {
+    use nebula_commons::serialization::SerializablePacket;
+
+    let mut buf_writer = tokio::io::BufWriter::new(vec![]);
+    e.serialize(&mut buf_writer).await?;
+
+    daemon.send(buf_writer.buffer()).await?;
+
+    Ok(())
 }
