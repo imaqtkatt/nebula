@@ -25,7 +25,7 @@ pub(crate) fn announce(
                 eprintln!("error while sending announcement: {e}");
             }
 
-            if let Err(_) = emitter.emit(Announced).await {}
+            _ = emitter.emit(Announced).await;
 
             tokio::time::sleep(time::Duration::from_secs(5)).await;
         }

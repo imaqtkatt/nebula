@@ -45,7 +45,6 @@ impl Discovery {
     ) {
         let daemon_socket = daemon_socket.clone();
         let daemon_socket2 = daemon_socket.clone();
-        let daemon_socket3 = daemon_socket.clone();
 
         listener.register(move |e| {
             let daemon_socket = daemon_socket.clone();
@@ -58,15 +57,6 @@ impl Discovery {
 
         listener.register(move |e| {
             let daemon_socket = daemon_socket2.clone();
-            async move {
-                if let Err(e) = tell_announced(daemon_socket, e).await {
-                    eprintln!("{e}")
-                }
-            }
-        });
-
-        listener.register(move |e| {
-            let daemon_socket = daemon_socket3.clone();
             async move {
                 if let Err(e) = tell_peer_upserted(daemon_socket, e).await {
                     eprintln!("{e}")
@@ -87,15 +77,6 @@ async fn tell_peer_disconnected(
 
     daemon.send(buf_writer.buffer()).await?;
 
-    Ok(())
-}
-
-async fn tell_announced(
-    daemon: std::sync::Arc<tokio::net::UdpSocket>,
-    _: crate::task::announce::Announced,
-) -> std::io::Result<()> {
-    _ = daemon.send(b"Ok").await?;
-    println!("announced");
     Ok(())
 }
 

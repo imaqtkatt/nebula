@@ -170,12 +170,12 @@ impl Serialize for SerializableSocketAddr {
     ) -> std::io::Result<()> {
         match self.0.ip() {
             std::net::IpAddr::V4(ipv4_addr) => {
-                wr.write(b"V4").await?;
+                wr.write_all(b"V4").await?;
                 let bits = ipv4_addr.to_bits();
                 wr.write_u32(bits).await?;
             }
             std::net::IpAddr::V6(ipv6_addr) => {
-                wr.write(b"V6").await?;
+                wr.write_all(b"V6").await?;
                 let bits = ipv6_addr.to_bits();
                 wr.write_u128(bits).await?;
             }
